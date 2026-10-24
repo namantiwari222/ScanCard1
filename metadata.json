@@ -1,0 +1,8 @@
+{
+  "name": "ScanCard Attendance System",
+  "description": "Digital attendance system with QR code generation, scanning, and PDF reporting.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
