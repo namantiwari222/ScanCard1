@@ -1102,8 +1102,11 @@ export function submitStudentAttendance(params: {
   studentLat?: number;
   studentLng?: number;
   bleDetected?: boolean;
+  verificationMethod?: VerificationMethod;
+  faceVerified?: boolean;
+  biometricVerified?: boolean;
 }): SubmitAttendanceResult {
-  const { student, tokenPayload, studentLat, studentLng, bleDetected } = params;
+  const { student, tokenPayload, studentLat, studentLng, bleDetected, faceVerified, biometricVerified } = params;
 
   if (student.role !== 'student') {
     return { success: false, error: 'Only authenticated students can mark attendance' };
@@ -1175,8 +1178,14 @@ export function submitStudentAttendance(params: {
 
   // Presence Verification Checks
   let verified = true;
-  let verificationMethod: VerificationMethod = 'dynamic_qr';
+  let verificationMethod: VerificationMethod = params.verificationMethod || 'dynamic_qr';
   let distanceMeters = 0;
+
+  if (biometricVerified) {
+    verificationMethod = 'biometric_verified';
+  } else if (faceVerified) {
+    verificationMethod = 'face_verified';
+  }
 
   // Location Verification if enabled
   if (session.allowLocationCheck && studentLat !== undefined && studentLng !== undefined) {
@@ -1196,13 +1205,13 @@ export function submitStudentAttendance(params: {
         'GEOFENCE_FAILED',
         `Student was ${distanceMeters}m away (allowed: ${session.radiusMeters}m)`
       );
-    } else {
+    } else if (!biometricVerified && !faceVerified) {
       verificationMethod = 'qr_gps_verified';
     }
   }
 
   // Bluetooth check if requested
-  if (session.allowBleCheck && bleDetected) {
+  if (session.allowBleCheck && bleDetected && !biometricVerified && !faceVerified) {
     verificationMethod = 'qr_ble_verified';
   }
 
@@ -1298,6 +1307,75 @@ export function addManualAttendanceRecord(record: AttendanceRecord, actor: User)
     'MANUAL_ATTENDANCE_CREATED',
     `Added manual attendance record for ${record.studentName} (${record.studentRoll}) in subject ${record.subjectId} as ${record.status.toUpperCase()}`
   );
+}
+
+export function markDirectAttendanceByTeacher(params: {
+  student: User;
+  sessionId?: string;
+  subjectId: string;
+  classGroupId?: string;
+  status?: AttendanceStatus;
+  teacher: User;
+  note?: string;
+}): { success: boolean; record: AttendanceRecord } {
+  const { student, teacher, subjectId, status = 'present', note } = params;
+  const records = getAllRecords();
+  const sessions = getAllSessions();
+
+  let targetSession = params.sessionId ? sessions.find((s) => s.id === params.sessionId) : null;
+  if (!targetSession) {
+    targetSession =
+      sessions.find((s) => s.subjectId === subjectId && s.status === 'active') ||
+      sessions.find((s) => s.subjectId === subjectId);
+  }
+
+  const sessionId = targetSession ? targetSession.id : `sess_direct_${Date.now()}`;
+  const classGroupId = params.classGroupId || targetSession?.classGroupId || 'class_cse_6a';
+
+  const existingIndex = records.findIndex((r) => r.sessionId === sessionId && r.studentId === student.id);
+
+  const recordId = existingIndex !== -1 ? records[existingIndex].id : `rec_teacher_${Date.now()}_${student.id}`;
+  const record: AttendanceRecord = {
+    id: recordId,
+    sessionId,
+    classGroupId,
+    subjectId,
+    studentId: student.id,
+    studentRoll: student.rollNumber || student.username,
+    studentName: student.name,
+    timestamp: new Date().toISOString(),
+    status,
+    verificationMethod: 'manual_teacher',
+    notes: note || `Directly marked ${status.toUpperCase()} by instructor ${teacher.name}`,
+    auditTrail: [
+      {
+        updatedBy: teacher.name,
+        role: teacher.role,
+        previousStatus: existingIndex !== -1 ? records[existingIndex].status : 'absent',
+        newStatus: status,
+        reason: 'Direct teacher attendance override/mark',
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  };
+
+  if (existingIndex !== -1) {
+    records[existingIndex] = record;
+  } else {
+    records.push(record);
+  }
+
+  setJson(RECORDS_KEY, records);
+  logAudit(
+    teacher.id,
+    teacher.name,
+    teacher.role,
+    'DIRECT_TEACHER_ATTENDANCE',
+    `Directly marked ${student.name} (${student.rollNumber || student.id}) as ${status.toUpperCase()} for subject ${subjectId}`
+  );
+
+  checkAndTriggerAttendanceAlerts(student, subjectId);
+  return { success: true, record };
 }
 
 export function deleteAttendanceRecord(recordId: string, actor: User): { success: boolean; error?: string } {

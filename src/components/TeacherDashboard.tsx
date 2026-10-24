@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   AlertTriangle,
   BookOpen,
@@ -7,7 +7,9 @@ import {
   QrCode,
   School,
   Send,
+  UserCheck,
   Users,
+  X,
 } from 'lucide-react';
 import {
   getActiveSession,
@@ -15,6 +17,7 @@ import {
   getAllUsers,
   getAttendancePolicy,
   getStudentSubjectStats,
+  markDirectAttendanceByTeacher,
 } from '../storage';
 import { User } from '../types';
 
@@ -35,6 +38,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   );
   const students = getAllUsers().filter((u) => u.role === 'student');
   const policy = getAttendancePolicy();
+
+  // Direct Mark Attendance Modal state
+  const [showDirectMarkModal, setShowDirectMarkModal] = useState<boolean>(false);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>(students[0]?.id || '');
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>(subjects[0]?.id || '');
+  const [directMarkSuccess, setDirectMarkSuccess] = useState<string>('');
+  const [directMarkReason, setDirectMarkReason] = useState<string>('Face/Biometric camera unavailable on student phone');
 
   // Find students with low attendance in this teacher's subjects
   const atRiskStudents: Array<{
@@ -61,6 +71,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     });
   });
 
+  const handleExecuteDirectMark = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetStudent = students.find((s) => s.id === selectedStudentId);
+    const targetSubject = subjects.find((s) => s.id === selectedSubjectId);
+    if (!targetStudent || !targetSubject) return;
+
+    markDirectAttendanceByTeacher({
+      student: targetStudent,
+      subjectId: targetSubject.id,
+      status: 'present',
+      teacher,
+      note: directMarkReason,
+    });
+
+    setDirectMarkSuccess(
+      `✓ Attendance marked PRESENT for ${targetStudent.name} (${targetStudent.rollNumber}) in ${targetSubject.code}!`
+    );
+    setTimeout(() => {
+      setDirectMarkSuccess('');
+      setShowDirectMarkModal(false);
+    }, 1800);
+  };
+
   return (
     <div className="space-y-5 max-w-5xl mx-auto">
       {/* Friendly Hero Banner */}
@@ -73,14 +106,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           </p>
         </div>
 
-        {/* Big Obvious Action Button */}
-        <button
-          onClick={onStartSessionModal}
-          className="px-6 py-3.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-gray-900 font-extrabold text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 self-start sm:self-auto cursor-pointer"
-        >
-          <QrCode className="w-5 h-5 text-gray-900" />
-          <span>Take Attendance (Show QR)</span>
-        </button>
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setShowDirectMarkModal(true)}
+            className="px-4 py-3 bg-white/15 hover:bg-white/25 active:scale-95 text-white font-bold text-xs rounded-xl border border-white/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <UserCheck className="w-4 h-4 text-emerald-300" />
+            <span>Direct Mark Attendance</span>
+          </button>
+
+          <button
+            onClick={onStartSessionModal}
+            className="px-5 py-3 bg-amber-400 hover:bg-amber-300 active:scale-95 text-gray-900 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <QrCode className="w-4 h-4 text-gray-900" />
+            <span>Take Attendance (Show QR)</span>
+          </button>
+        </div>
       </div>
 
       {/* Active Session Alert if Running */}
@@ -226,6 +269,104 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Direct Mark Attendance Modal for Teacher */}
+      {showDirectMarkModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <UserCheck className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">Direct Mark Attendance</h3>
+                  <p className="text-[11px] text-gray-500">Teacher override for students without camera/QR</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDirectMarkModal(false);
+                  setDirectMarkSuccess('');
+                }}
+                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {directMarkSuccess ? (
+              <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-800 text-xs font-bold text-center space-y-1">
+                <CheckCircle2 className="w-7 h-7 text-emerald-600 mx-auto" />
+                <div>{directMarkSuccess}</div>
+              </div>
+            ) : (
+              <form onSubmit={handleExecuteDirectMark} className="space-y-3.5 text-xs">
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Select Subject</label>
+                  <select
+                    value={selectedSubjectId}
+                    onChange={(e) => setSelectedSubjectId(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white"
+                  >
+                    {subjects.map((sub) => (
+                      <option key={sub.id} value={sub.id}>
+                        {sub.code} - {sub.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Select Student</label>
+                  <select
+                    value={selectedStudentId}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-semibold text-gray-900 focus:bg-white"
+                  >
+                    {students.map((stu) => (
+                      <option key={stu.id} value={stu.id}>
+                        {stu.name} ({stu.rollNumber || 'CS-2024'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-gray-700 mb-1">Reason / Note</label>
+                  <input
+                    type="text"
+                    value={directMarkReason}
+                    onChange={(e) => setDirectMarkReason(e.target.value)}
+                    placeholder="e.g. Student camera broken, verified in classroom"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-xl text-xs font-medium text-gray-900 focus:bg-white"
+                  />
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDirectMarkModal(false)}
+                    className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <UserCheck className="w-4 h-4" />
+                    <span>Direct Mark Present</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -57,7 +57,10 @@ export type VerificationMethod =
   | 'dynamic_qr'
   | 'manual'
   | 'qr_gps_verified'
-  | 'qr_ble_verified';
+  | 'qr_ble_verified'
+  | 'face_verified'
+  | 'biometric_verified'
+  | 'manual_teacher';
 
 export interface AuditRecord {
   updatedBy: string;

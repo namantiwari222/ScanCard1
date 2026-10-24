@@ -440,7 +440,16 @@ export const AttendanceReportsView: React.FC<AttendanceReportsViewProps> = ({ cu
                       </td>
 
                       <td className="py-3 px-4 text-[11px] text-gray-600">
-                        <div>Method: {r.verificationMethod}</div>
+                        <div className="font-semibold text-gray-900">
+                          {r.verificationMethod === 'face_verified' && '📸 Live Face Identified'}
+                          {r.verificationMethod === 'biometric_verified' && '👆 Mobile Biometric'}
+                          {r.verificationMethod === 'manual_teacher' && '👩‍🏫 Teacher Direct Mark'}
+                          {r.verificationMethod === 'qr_gps_verified' && '📍 QR + GPS Geofence'}
+                          {r.verificationMethod === 'dynamic_qr' && '📱 Dynamic QR'}
+                          {r.verificationMethod === 'manual' && '✍️ Admin Manual'}
+                          {r.verificationMethod === 'qr_ble_verified' && '📶 QR + Bluetooth'}
+                          {!['face_verified', 'biometric_verified', 'manual_teacher', 'qr_gps_verified', 'dynamic_qr', 'manual', 'qr_ble_verified'].includes(r.verificationMethod) && r.verificationMethod}
+                        </div>
                         {r.locationEvidence && (
                           <div className="text-[10px] text-gray-500">
                             Distance: {r.locationEvidence.distanceMeters}m (GPS Verified)
